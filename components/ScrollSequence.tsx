@@ -123,18 +123,24 @@ export default function ScrollSequence() {
     };
 
     video.addEventListener("loadedmetadata", onLoadedMetadata);
+    video.addEventListener("loadeddata", onLoadedMetadata); // iOS fallback — fires when first frame is ready
     video.addEventListener("seeked", onSeeked);
     window.addEventListener("resize", onResize);
 
-    // If metadata is already loaded (e.g. hot-reload)
+    // If metadata/data already loaded (e.g. hot-reload or fast mobile cache)
     if (video.readyState >= 1) {
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
       drawFrame();
     }
+    // If first frame is already decoded, paint it immediately
+    if (video.readyState >= 2) {
+      drawFrame();
+    }
 
     return () => {
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("loadeddata", onLoadedMetadata);
       video.removeEventListener("seeked", onSeeked);
       window.removeEventListener("resize", onResize);
       unsubscribe();
@@ -201,7 +207,7 @@ export default function ScrollSequence() {
           muted
           playsInline
           preload="auto"
-          style={{ position: "absolute", visibility: "hidden", width: 1, height: 1 }}
+          style={{ position: "absolute", opacity: 0, width: 1, height: 1, pointerEvents: "none" }}
         />
 
         {/* ── CANVAS — displays cleanly decoded frames ── */}
