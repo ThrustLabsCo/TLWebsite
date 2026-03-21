@@ -106,7 +106,14 @@ export default function ScrollSequence() {
     const onLoadedMetadata = () => {
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
-      drawFrame();
+      // Seek to current scroll position immediately — critical on mobile where
+      // video loads after the user may have already scrolled into this section
+      const progress = scrollYProgress.get();
+      if (video.duration && progress > 0) {
+        processSeek(video.duration * Math.max(0, Math.min(1, progress)));
+      } else {
+        drawFrame();
+      }
     };
 
     // Wire scroll → seek queue
@@ -123,24 +130,18 @@ export default function ScrollSequence() {
     };
 
     video.addEventListener("loadedmetadata", onLoadedMetadata);
-    video.addEventListener("loadeddata", onLoadedMetadata); // iOS fallback — fires when first frame is ready
     video.addEventListener("seeked", onSeeked);
     window.addEventListener("resize", onResize);
 
-    // If metadata/data already loaded (e.g. hot-reload or fast mobile cache)
+    // If metadata already loaded (e.g. hot-reload)
     if (video.readyState >= 1) {
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
       drawFrame();
     }
-    // If first frame is already decoded, paint it immediately
-    if (video.readyState >= 2) {
-      drawFrame();
-    }
 
     return () => {
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
-      video.removeEventListener("loadeddata", onLoadedMetadata);
       video.removeEventListener("seeked", onSeeked);
       window.removeEventListener("resize", onResize);
       unsubscribe();
