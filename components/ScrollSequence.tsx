@@ -144,9 +144,19 @@ export default function ScrollSequence() {
       drawFrame();
     };
 
+    // canplay fires when the browser has enough data to start playback
+    // Use it as a fallback to draw the first frame if loadedmetadata missed it
+    const onCanPlay = () => {
+      if (!isSeekingRef.current) drawFrame();
+    };
+
     video.addEventListener("loadedmetadata", onLoadedMetadata);
+    video.addEventListener("canplay", onCanPlay);
     video.addEventListener("seeked", onSeeked);
     window.addEventListener("resize", onResize);
+
+    // Kick off loading explicitly — ensures browsers that lazy-load fire the events
+    if (video.readyState === 0) video.load();
 
     // If metadata already loaded (e.g. hot-reload)
     if (video.readyState >= 1) {
@@ -156,6 +166,7 @@ export default function ScrollSequence() {
 
     return () => {
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("seeked", onSeeked);
       window.removeEventListener("resize", onResize);
       unsubscribe();

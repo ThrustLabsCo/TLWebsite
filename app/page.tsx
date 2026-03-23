@@ -11,7 +11,7 @@ import Footer from "@/components/Footer";
 
 export default function Home() {
   return (
-    <main style={{ overflowX: "hidden" }}>
+    <main>
       <Nav />
       <Hero />
       <ScrollSequence />
