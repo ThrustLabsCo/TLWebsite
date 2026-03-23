@@ -132,13 +132,6 @@ export default function ScrollSequence() {
       }
     };
 
-    // Wire scroll → seek queue
-    const unsubscribe = scrollYProgress.on("change", (progress) => {
-      if (!video.duration) return;
-      const t = video.duration * Math.max(0, Math.min(1, progress));
-      processSeek(t);
-    });
-
     const onResize = () => {
       setCanvasSize();
       drawFrame();
@@ -164,12 +157,35 @@ export default function ScrollSequence() {
       drawFrame();
     }
 
+    // ── MOMENTUM SCROLL — rAF loop lerps a smoothed progress toward the real
+    //    scroll position. Gives the video a natural decay/inertia feel instead
+    //    of hard start/stop. Text panels stay on raw scrollYProgress (crisp).
+    //    maxStep caps speed so the video never scrubs too fast.
+    let smoothed = scrollYProgress.get();
+    let rafId: number;
+    const LERP   = 0.07;   // how quickly smoothed chases target (lower = more decay)
+    const MAX_STEP = 0.005; // max progress change per frame (~3.3s min full traversal at 60fps)
+
+    const rafLoop = () => {
+      const target = scrollYProgress.get();
+      const delta  = target - smoothed;
+      if (Math.abs(delta) > 0.0001) {
+        const step = Math.sign(delta) * Math.min(Math.abs(delta) * LERP, MAX_STEP);
+        smoothed += step;
+        if (video.duration) {
+          processSeek(video.duration * Math.max(0, Math.min(1, smoothed)));
+        }
+      }
+      rafId = requestAnimationFrame(rafLoop);
+    };
+    rafId = requestAnimationFrame(rafLoop);
+
     return () => {
+      cancelAnimationFrame(rafId);
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("seeked", onSeeked);
       window.removeEventListener("resize", onResize);
-      unsubscribe();
     };
   }, [scrollYProgress, isMobile]);
 
