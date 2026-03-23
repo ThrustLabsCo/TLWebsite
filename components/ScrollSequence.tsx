@@ -163,7 +163,7 @@ export default function ScrollSequence() {
     //    maxStep caps speed so the video never scrubs too fast.
     let smoothed = scrollYProgress.get();
     let rafId: number;
-    const LERP   = 0.07;   // how quickly smoothed chases target (lower = more decay)
+    const LERP   = 0.035;  // how quickly smoothed chases target (lower = more decay)
     const MAX_STEP = 0.005; // max progress change per frame (~3.3s min full traversal at 60fps)
 
     const rafLoop = () => {
