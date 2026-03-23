@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 
 const panels = [
@@ -35,6 +35,15 @@ export default function ScrollSequence() {
   const isSeekingRef   = useRef(false);
   const pendingTimeRef = useRef<number | null>(null);
 
+  // Mobile detection — video scrubbing is unreliable on iOS/Android
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
@@ -56,9 +65,17 @@ export default function ScrollSequence() {
   // Draw the current video frame to canvas, then process any queued seek.
   // Canvas always shows the last clean decoded frame — no blank flashes.
   useEffect(() => {
+    if (isMobile) return; // skip on mobile — no canvas/video rendered
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+
+    const setCanvasSize = () => {
+      // Use devicePixelRatio for crisp rendering on Retina/HiDPI screens
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = window.innerWidth  * dpr;
+      canvas.height = window.innerHeight * dpr;
+    };
 
     const drawFrame = () => {
       const ctx = canvas.getContext("2d");
@@ -104,8 +121,7 @@ export default function ScrollSequence() {
     };
 
     const onLoadedMetadata = () => {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
+      setCanvasSize();
       // Seek to current scroll position immediately — critical on mobile where
       // video loads after the user may have already scrolled into this section
       const progress = scrollYProgress.get();
@@ -124,8 +140,7 @@ export default function ScrollSequence() {
     });
 
     const onResize = () => {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
+      setCanvasSize();
       drawFrame();
     };
 
@@ -135,8 +150,7 @@ export default function ScrollSequence() {
 
     // If metadata already loaded (e.g. hot-reload)
     if (video.readyState >= 1) {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
+      setCanvasSize();
       drawFrame();
     }
 
@@ -146,7 +160,7 @@ export default function ScrollSequence() {
       window.removeEventListener("resize", onResize);
       unsubscribe();
     };
-  }, [scrollYProgress]);
+  }, [scrollYProgress, isMobile]);
 
   // ── MOTION VALUES ──
   const videoScale = useTransform(scrollYProgress, [0, 1], [0.93, 1.04]);
@@ -178,37 +192,130 @@ export default function ScrollSequence() {
   ];
   const dots = [dot1, dot2, dot3, dot4];
 
+  // ── SHARED CHROME (used on both desktop and mobile) ──
+  const chrome = (
+    <>
+      {/* Section label */}
+      <motion.div
+        style={{ opacity: labelOpacity }}
+        className="absolute top-8 left-6 md:left-12 z-20 flex items-center gap-2.5"
+      >
+        <div className="w-4 h-px bg-[#00F0FF]" />
+        <span className="text-[#00F0FF] text-xs font-mono-custom font-bold uppercase tracking-[0.15em]">
+          How we build
+        </span>
+      </motion.div>
+
+      {/* Step counter */}
+      <motion.div
+        style={{ opacity: labelOpacity }}
+        className="absolute top-8 right-6 md:right-12 z-20 flex items-center gap-5"
+      >
+        {panels.map((_, i) => (
+          <motion.span
+            key={i}
+            style={{ opacity: dots[i] }}
+            className="font-mono-custom text-xs font-bold text-[#8A8A9A] tracking-widest"
+          >
+            0{i + 1}
+          </motion.span>
+        ))}
+      </motion.div>
+
+      {/* ── TEXT PANELS ── */}
+      <div className="absolute bottom-14 left-6 md:left-14 right-6 md:right-auto md:max-w-[520px] z-20">
+        {panels.map((panel, i) => (
+          <motion.div
+            key={panel.label}
+            style={{
+              opacity: panelMotion[i].opacity,
+              y: panelMotion[i].y,
+              position: i === 0 ? "relative" : "absolute",
+              inset: i === 0 ? undefined : 0,
+            }}
+          >
+            <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[rgba(0,240,255,0.22)] bg-[rgba(0,240,255,0.08)]">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#00F0FF]" />
+              <span className="text-[#00F0FF] text-xs font-mono-custom font-bold uppercase tracking-[0.15em]">
+                {panel.label}
+              </span>
+            </div>
+            <h2
+              className="font-display font-black text-[#E4E4E4] leading-[0.95] tracking-[-0.01em] mb-4"
+              style={{ fontSize: "clamp(1.9rem, 4vw, 52px)" }}
+            >
+              {panel.heading}
+            </h2>
+            <p className="text-[#ABABBB] text-base md:text-lg leading-relaxed">
+              {panel.body}
+            </p>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[rgba(255,255,255,0.05)] z-30">
+        <motion.div
+          style={{ width: progressWidth, boxShadow: "0 0 8px rgba(0,240,255,0.7)" }}
+          className="h-full bg-[#00F0FF]"
+        />
+      </div>
+    </>
+  );
+
+  // ── SHARED AMBIENT BACKGROUND ──
+  const ambientBg = (
+    <>
+      {/* Subtle grid */}
+      <div
+        className="absolute inset-0 opacity-[0.025] pointer-events-none"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(0,240,255,0.6) 1px,transparent 1px),linear-gradient(90deg,rgba(0,240,255,0.6) 1px,transparent 1px)",
+          backgroundSize: "80px 80px",
+        }}
+      />
+      {/* Ambient glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] rounded-full bg-[#00F0FF]/4 blur-[150px]" />
+        <div className="absolute bottom-0 right-[10%] w-[350px] h-[350px] rounded-full bg-[#7000FF]/6 blur-[120px]" />
+      </div>
+    </>
+  );
+
+  // ── MOBILE VERSION — no canvas/video, pure CSS background ──
+  if (isMobile) {
+    return (
+      <div ref={containerRef} style={{ height: "280vh" }} className="w-full">
+        <div
+          className="sticky top-0 w-full overflow-hidden bg-[#0A0A0B]"
+          style={{ height: "100dvh" }}
+        >
+          {ambientBg}
+          {chrome}
+        </div>
+      </div>
+    );
+  }
+
+  // ── DESKTOP VERSION — canvas + video scrubbing ──
   return (
     <div ref={containerRef} style={{ height: "400vh" }} className="w-full">
       <div
         className="sticky top-0 w-full overflow-hidden bg-[#0A0A0B]"
         style={{ height: "100dvh" }}
       >
-        {/* Subtle grid */}
-        <div
-          className="absolute inset-0 opacity-[0.025] pointer-events-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(0,240,255,0.6) 1px,transparent 1px),linear-gradient(90deg,rgba(0,240,255,0.6) 1px,transparent 1px)",
-            backgroundSize: "80px 80px",
-          }}
-        />
-
-        {/* Ambient glow */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] rounded-full bg-[#00F0FF]/4 blur-[150px]" />
-          <div className="absolute bottom-0 right-[10%] w-[350px] h-[350px] rounded-full bg-[#7000FF]/6 blur-[120px]" />
-        </div>
+        {ambientBg}
 
         {/* ── HIDDEN VIDEO — feeds the canvas decoder, never shown directly ── */}
-        {/* visibility:hidden keeps the element active so seeking works */}
+        {/* Full-size but invisible so browsers fully decode & seek the video  */}
         <video
           ref={videoRef}
           src="/exploding-phone.mp4"
           muted
           playsInline
           preload="auto"
-          style={{ position: "absolute", opacity: 0, width: 1, height: 1, pointerEvents: "none" }}
+          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, pointerEvents: "none" }}
         />
 
         {/* ── CANVAS — displays cleanly decoded frames ── */}
@@ -263,67 +370,9 @@ export default function ScrollSequence() {
           }}
         />
 
-        {/* ── UI CHROME ── */}
+        {chrome}
 
-        {/* Section label */}
-        <motion.div
-          style={{ opacity: labelOpacity }}
-          className="absolute top-8 left-6 md:left-12 z-20 flex items-center gap-2.5"
-        >
-          <div className="w-4 h-px bg-[#00F0FF]" />
-          <span className="text-[#00F0FF] text-xs font-mono-custom font-bold uppercase tracking-[0.15em]">
-            How we build
-          </span>
-        </motion.div>
-
-        {/* Step counter */}
-        <motion.div
-          style={{ opacity: labelOpacity }}
-          className="absolute top-8 right-6 md:right-12 z-20 flex items-center gap-5"
-        >
-          {panels.map((_, i) => (
-            <motion.span
-              key={i}
-              style={{ opacity: dots[i] }}
-              className="font-mono-custom text-xs font-bold text-[#8A8A9A] tracking-widest"
-            >
-              0{i + 1}
-            </motion.span>
-          ))}
-        </motion.div>
-
-        {/* ── TEXT PANELS ── */}
-        <div className="absolute bottom-14 left-6 md:left-14 right-6 md:right-auto md:max-w-[520px] z-20">
-          {panels.map((panel, i) => (
-            <motion.div
-              key={panel.label}
-              style={{
-                opacity: panelMotion[i].opacity,
-                y: panelMotion[i].y,
-                position: i === 0 ? "relative" : "absolute",
-                inset: i === 0 ? undefined : 0,
-              }}
-            >
-              <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full border border-[rgba(0,240,255,0.22)] bg-[rgba(0,240,255,0.08)]">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#00F0FF]" />
-                <span className="text-[#00F0FF] text-xs font-mono-custom font-bold uppercase tracking-[0.15em]">
-                  {panel.label}
-                </span>
-              </div>
-              <h2
-                className="font-display font-black text-[#E4E4E4] leading-[0.95] tracking-[-0.01em] mb-4"
-                style={{ fontSize: "clamp(1.9rem, 4vw, 52px)" }}
-              >
-                {panel.heading}
-              </h2>
-              <p className="text-[#ABABBB] text-base md:text-lg leading-relaxed">
-                {panel.body}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Scroll hint */}
+        {/* Scroll hint — desktop only */}
         <motion.div
           style={{ opacity: hintOpacity }}
           className="absolute bottom-14 right-8 md:right-14 flex flex-col items-center gap-2 pointer-events-none z-20"
@@ -337,14 +386,6 @@ export default function ScrollSequence() {
             scroll
           </span>
         </motion.div>
-
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[rgba(255,255,255,0.05)] z-30">
-          <motion.div
-            style={{ width: progressWidth, boxShadow: "0 0 8px rgba(0,240,255,0.7)" }}
-            className="h-full bg-[#00F0FF]"
-          />
-        </div>
       </div>
     </div>
   );
